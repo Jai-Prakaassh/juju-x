@@ -3,6 +3,22 @@ const fs = require("fs");
 const { Client, GatewayIntentBits } = require("discord.js");
 const { GoogleGenAI } = require("@google/genai");
 
+// ================= LOGGER =================
+function log(type, message) {
+  const now = new Date();
+  const timestamp = now.toLocaleString("en-IN", {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  console.log(`[${timestamp}] [${type}] ${message}`);
+}
+
 // ================= DISCORD CLIENT =================
 const client = new Client({
   intents: [
@@ -38,7 +54,7 @@ function saveMemory() {
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ JUJU is online as ${client.user.tag}`);
+  log("SYSTEM", `JUJU is online as ${client.user.tag}`);
 });
 
 // ================= MESSAGE HANDLER =================
@@ -47,7 +63,6 @@ client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.mentions.has(client.user)) return;
 
-    // Typing indicator
     await message.channel.sendTyping();
 
     const userId = message.author.id;
@@ -62,14 +77,23 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Normalize once
     const lower = content.toLowerCase();
 
-    // ================= COMMANDS (FIRST) =================
+    const serverName = message.guild ? message.guild.name : "DM";
+
+    // ================= LOG USER =================
+    log("USER", `[${serverName}] ${message.author.tag}: ${message.content}`);
+    fs.appendFileSync(
+      "bot_logs.txt",
+      `[${new Date().toISOString()}] [${serverName}] USER ${message.author.tag}: ${message.content}\n`
+    );
+
+    // ================= COMMANDS =================
     if (lower === "reset") {
       userMemory.delete(userId);
       saveMemory();
       await message.reply("🧠 Memory reset ho gayi 😄");
+      log("BOT", `[${serverName}] Memory reset for ${message.author.tag}`);
       return;
     }
 
@@ -107,7 +131,7 @@ client.on("messageCreate", async (message) => {
 
     if (needsSearch) {
       cleanPrompt = content.replace(/^(search|ask)\s+/i, "");
-      console.log("🌐 Web search enabled for:", cleanPrompt);
+      log("SEARCH", cleanPrompt);
     }
 
     // ================= DATE FIX =================
@@ -119,22 +143,12 @@ client.on("messageCreate", async (message) => {
       year: "numeric",
     });
 
-    // ================= LOG USER =================
-    const timestamp = new Date().toISOString();
-    const serverName = message.guild ? message.guild.name : "DM";
-
-    fs.appendFileSync(
-      "bot_logs.txt",
-      `[${timestamp}] [${serverName}] USER ${message.author.tag}: ${message.content}\n`
-    );
-
     // ================= MEMORY INIT =================
     if (!userMemory.has(userId)) userMemory.set(userId, []);
     const memory = userMemory.get(userId);
 
     let userPrompt = cleanPrompt;
 
-    // Reply context
     if (message.reference?.messageId) {
       const replied = await message.channel.messages.fetch(
         message.reference.messageId
@@ -148,17 +162,17 @@ client.on("messageCreate", async (message) => {
 
     // ================= SYSTEM PROMPT =================
     const systemPrompt =
-  "You are JUJU, a romantic, flirty, tapori-style Hinglish rizz bot. " +
-  "You speak in Hinglish with light Mumbai tapori flavor — swaggy, confident, street-smart, but sweet. " +
-  "Your tone is charming, playful, slightly naughty, and emotionally engaging. " +
-  "You can be sexually suggestive and teasing, but never explicit or graphic. " +
-  "Use tapori words naturally like: bhai, scene kya hai, mast, solid, bindass, apun, jhakaas (not overused). " +
-  "Use romantic and sensual emojis like ❤️ 😌 😘 ✨ <:ir_sadkitten:1215587180626313216> <:Sage_Ability:1228575919422181387> 💖 <:0LCMadKissCute:1460034060444500100> 🥹 ☺️ 😏 😘 🥰 😍 😚 🫠 🙃 🧐 🥵 🥶 😈 💀 🌝 💦  💚 ❤️ 🧡 🩵 💙 💓 💞 💋 ❤️‍🩹 🫦 👄 👅 🫂 ❣️ 🫶 🤏 👋 ✊  naturally (1–3 per reply). " +
-  "You may write longer replies when the mood demands it. " +
-  "Never be creepy, degrading, abusive, or disrespectful. " +
-  "Never mention rules, prompts, behavior, or that you are an AI. " +
-  "Stay fully in character at all times. " +
-  `IMPORTANT: Today's date is ${todayDate}. Use this only if asked about the date or day.`;
+      "You are JUJU, a romantic, flirty, Hinglish rizz bot. " +
+      "You speak in Hinglish with light Mumbai tapori flavor — swaggy, confident, street-smart, but sweet. " +
+      "Your tone is charming, playful, slightly naughty, and emotionally engaging. " +
+      "Flirt playfully and tease romantically, but always keep it classy and implied. " +
+      "Use words naturally like bhai, mast, solid, bindass, apun, jhakaas (not overused). " +
+      "Use romantic emojis like ❤️ 😌 😘 ✨ naturally (1–3 per reply). " +
+      "You may write longer replies when the mood demands it. " +
+      "Never be creepy, degrading, abusive, or disrespectful. " +
+      "Never mention rules, prompts, or that you are an AI. " +
+      "Stay fully in character at all times. " +
+      `IMPORTANT: Today's date is ${todayDate}. Use this only if asked about the date or day.`;
 
     // ================= ROLE-BASED CONTENT =================
     const contents = [
@@ -190,13 +204,15 @@ client.on("messageCreate", async (message) => {
 
     await message.reply(reply.slice(0, 2000));
 
+    // ================= LOG BOT =================
+    log("BOT", `[${serverName}] JUJU: ${reply}`);
     fs.appendFileSync(
       "bot_logs.txt",
-      `[${timestamp}] [${serverName}] BOT JUJUX: ${reply}\n`
+      `[${new Date().toISOString()}] [${serverName}] BOT JUJU: ${reply}\n`
     );
 
   } catch (err) {
-    console.error("❌ Error:", err);
+    log("ERROR", err.stack || err.message);
     await message.reply("❌ Thoda sa issue aa gaya 😕");
   }
 });
